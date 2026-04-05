@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Gods Will Cafe - Brutalist Design System
+   Raw, bold, unapologetic. Black dominates. Warmth from amber accents.
+*/
+
+@layer base {
+  :root {
+    /* Core: Deep charcoal blacks */
+    --background: 0 0% 4%;
+    --foreground: 40 20% 92%;
+
+    /* Cards: Slightly lifted black */
+    --card: 0 0% 7%;
+    --card-foreground: 40 20% 92%;
+
+    /* Popover */
+    --popover: 0 0% 7%;
+    --popover-foreground: 40 20% 92%;
+
+    /* Primary: Warm amber/coffee accent */
+    --primary: 32 80% 50%;
+    --primary-foreground: 0 0% 4%;
+
+    /* Secondary: Dark gray */
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 40 20% 92%;
+
+    /* Muted: Subdued grays */
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+
+    /* Accent: Warm cream */
+    --accent: 40 30% 85%;
+    --accent-foreground: 0 0% 4%;
+
+    /* Destructive */
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 40 20% 92%;
+
+    /* Borders & inputs */
+    --border: 0 0% 18%;
+    --input: 0 0% 15%;
+    --ring: 32 80% 50%;
+
+    --radius: 0px;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 40 20% 92%;
+    --sidebar-primary: 32 80% 50%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 40 20% 92%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 32 80% 50%;
+
+    /* Custom brutalist tokens */
+    --cream: 40 30% 92%;
+    --coffee: 32 80% 50%;
+    --charcoal: 0 0% 8%;
+    --stone: 0 0% 20%;
+  }
+
+  /* Light mode - for POS (green for active states) */
+  .light {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 40 30% 92%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 142 76% 36%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 10%;
+    --sidebar-primary: 142 76% 36%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 10%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 32 80% 50%;
+    --cream: 40 30% 96%;
+    --coffee: 32 80% 50%;
+    --charcoal: 0 0% 20%;
+    --stone: 0 0% 85%;
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 40 20% 92%;
+    --card: 0 0% 7%;
+    --card-foreground: 40 20% 92%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 40 20% 92%;
+    --primary: 32 80% 50%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 40 20% 92%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 40 30% 85%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 40 20% 92%;
+    --border: 0 0% 18%;
+    --input: 0 0% 15%;
+    --ring: 32 80% 50%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 40 20% 92%;
+    --sidebar-primary: 32 80% 50%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 40 20% 92%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 32 80% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    /* PWA: full viewport, safe areas for iPad notch */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
+
+  /* Brutalist typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold tracking-tight;
+  }
+
+  h1 {
+    @apply text-5xl md:text-7xl lg:text-8xl uppercase;
+  }
+
+  h2 {
+    @apply text-3xl md:text-5xl uppercase;
+  }
+
+  h3 {
+    @apply text-xl md:text-2xl uppercase;
+  }
+}
+
+@layer components {
+  /* Brutalist button styles */
+  .btn-brutal {
+    @apply bg-primary text-primary-foreground px-8 py-4 font-display font-bold uppercase tracking-wider 
+           border-2 border-primary transition-all duration-150 
+           hover:bg-transparent hover:text-primary;
+  }
+
+  .btn-brutal-outline {
+    @apply bg-transparent text-foreground px-8 py-4 font-display font-bold uppercase tracking-wider 
+           border-2 border-foreground transition-all duration-150 
+           hover:bg-foreground hover:text-background;
+  }
+
+  /* Brutalist divider */
+  .brutal-line {
+    @apply h-[2px] bg-stone w-full;
+  }
+
+  /* Brutalist card - no borders */
+  .brutal-card {
+    @apply bg-card p-6 md:p-8;
+  }
+
+  /* iPad / PWA: minimum touch target 44px for accessibility */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@layer utilities {
+  /* Text gradient for special headings */
+  .text-gradient-warm {
+    @apply bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent;
+  }
+
+  /* Overlay for hero images */
+  .hero-overlay {
+    @apply absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/40;
+  }
+}
