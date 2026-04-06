@@ -1,11 +1,26 @@
+import { useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { usePOS } from '@/contexts/POSContext';
+import { usePOS, type Order } from '@/contexts/POSContext';
 import { format } from 'date-fns';
-import { Banknote, Smartphone } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Banknote, Smartphone, Eye } from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+
+/** Total units sold (sum of line quantities) */
+function orderUnitCount(order: Order): number {
+  return order.items.reduce((sum, i) => sum + i.quantity, 0);
+}
 
 const AdminTransactions = () => {
   const { orders } = usePOS();
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
   const allTransactions = [...orders].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -13,7 +28,7 @@ const AdminTransactions = () => {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <h2 className="font-display font-bold text-foreground tracking-wider text-xl">TRANSACTION LOGS</h2>
 
         <div className="brutal-card bg-card overflow-hidden">
@@ -37,19 +52,29 @@ const AdminTransactions = () => {
                     </td>
                   </tr>
                 ) : (
-                  allTransactions.map((order) => (
+                  allTransactions.map((order) => {
+                    const units = orderUnitCount(order);
+                    return (
                     <tr key={order.id} className="border-b border-border hover:bg-secondary/50 transition-colors">
                       <td className="p-4 font-display font-bold text-foreground text-sm">{order.id}</td>
                       <td className="p-4 text-sm text-muted-foreground">
                         {format(new Date(order.timestamp), 'MMM dd, yyyy HH:mm:ss')}
                       </td>
-                      <td className="p-4 text-sm text-foreground max-w-[200px]">
-                        <div className="space-y-0.5">
-                          {order.items.map((item, idx) => (
-                            <p key={idx} className="truncate text-xs">
-                              {item.quantity}x {item.name}
-                            </p>
-                          ))}
+                      <td className="p-4 text-sm text-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="font-display tabular-nums">
+                            {units} item{units === 1 ? '' : 's'}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-primary hover:text-primary hover:bg-primary/10"
+                            aria-label="View all items"
+                            onClick={() => setDetailOrder(order)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                       <td className="p-4">
@@ -77,16 +102,59 @@ const AdminTransactions = () => {
                           {order.status.toUpperCase()}
                         </span>
                       </td>
-                      <td className="p-4 text-right font-display font-bold text-foreground">
-                        ₱{order.total.toFixed(2)}
+                      <td className="p-4 text-right font-display font-bold text-foreground tabular-nums">
+                        ₱{formatCurrency(order.total)}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
+
+        <Dialog open={!!detailOrder} onOpenChange={(open) => !open && setDetailOrder(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-display tracking-wider">Order items</DialogTitle>
+              <DialogDescription>
+                {detailOrder && (
+                  <>
+                    {detailOrder.id} · {detailOrder.items.length} line
+                    {detailOrder.items.length === 1 ? '' : 's'} · {orderUnitCount(detailOrder)} unit
+                    {orderUnitCount(detailOrder) === 1 ? '' : 's'}
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            {detailOrder && (
+              <ul className="max-h-[min(60vh,420px)] overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
+                {detailOrder.items.map((item, idx) => (
+                  <li
+                    key={`${item.id}-${idx}`}
+                    className="flex justify-between gap-3 py-2 border-b border-border last:border-0 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">{item.quantity}× {item.name}</span>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                      )}
+                    </div>
+                    <span className="shrink-0 font-display text-primary tabular-nums">
+                      ₱{formatCurrency(item.price * item.quantity)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setDetailOrder(null)}>
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );

@@ -10,6 +10,8 @@ import AdminOrders from "./pages/admin/AdminOrders";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminTransactions from "./pages/admin/AdminTransactions";
 import AdminInventory from "./pages/admin/AdminInventory";
+import AdminAudit from "./pages/admin/AdminAudit";
+import AdminProfitability from "./pages/admin/AdminProfitability";
 import { POSProvider } from "./contexts/POSContext";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 
@@ -30,6 +32,8 @@ const App = () => (
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
             <Route path="/admin/transactions" element={<AdminTransactions />} />
             <Route path="/admin/inventory" element={<AdminInventory />} />
+            <Route path="/admin/audit" element={<AdminAudit />} />
+            <Route path="/admin/profitability" element={<AdminProfitability />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>

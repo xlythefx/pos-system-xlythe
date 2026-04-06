@@ -84,43 +84,54 @@ const POSCart = () => {
             <p className="text-xs mt-1 font-sans">Tap items to add them</p>
           </div>
         ) : (
-          cart.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 p-3 bg-secondary animate-fade-in-up transition-all duration-200"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-display font-semibold text-foreground truncate tracking-tight">
-                  {item.name}
-                </p>
-                <p className="text-sm text-primary">
-                  ₱{formatCurrency(item.price * item.quantity)}
-                </p>
+          cart.map((item) => {
+            const unitPrice = item.price + item.modifierTotal;
+            return (
+              <div
+                key={item.cartLineId}
+                className="flex items-start gap-3 p-3 bg-secondary animate-fade-in-up transition-all duration-200"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-display font-semibold text-foreground truncate tracking-tight">
+                    {item.name}
+                  </p>
+                  {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                      {item.selectedModifiers.map((m) => m.optionName).join(', ')}
+                    </p>
+                  )}
+                  <p className="text-sm text-primary mt-0.5">
+                    ₱{formatCurrency(unitPrice * item.quantity)}
+                    {item.quantity > 1 && (
+                      <span className="text-muted-foreground text-xs ml-1">×{item.quantity}</span>
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => updateQuantity(item.cartLineId, item.quantity - 1)}
+                    className="p-1 bg-background hover:bg-muted transition-colors duration-200 rounded"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="font-display w-8 text-center">{item.quantity}</span>
+                  <button
+                    onClick={() => updateQuantity(item.cartLineId, item.quantity + 1)}
+                    className="p-1 bg-background hover:bg-muted transition-colors duration-200 rounded"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => removeFromCart(item.cartLineId)}
+                    className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                  className="p-1 bg-background hover:bg-muted transition-colors duration-200 rounded"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="font-display w-8 text-center">{item.quantity}</span>
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="p-1 bg-background hover:bg-muted transition-colors duration-200 rounded"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="p-1 text-muted-foreground hover:text-destructive transition-colors ml-1"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

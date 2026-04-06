@@ -1,15 +1,54 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { activeCafe } from '@/lib/cafe-config';
+
+// ─── Modifier types ────────────────────────────────────────────────────────────
+
+export interface ModifierOption {
+  id: string;
+  name: string;
+  price: number; // additional cost; 0 for free options
+}
+
+export interface ModifierGroup {
+  id: string;
+  name: string; // e.g. "Size", "Temperature", "Add-ons"
+  required: boolean; // must pick at least one option
+  multiSelect: boolean; // can pick multiple options
+  options: ModifierOption[];
+}
+
+export interface SelectedModifier {
+  groupId: string;
+  groupName: string;
+  optionId: string;
+  optionName: string;
+  price: number;
+}
+
+// ─── Menu + Cart ───────────────────────────────────────────────────────────────
 
 export interface MenuItem {
   id: string;
+  sku: string;
   name: string;
   price: number;
+  costPrice?: number;
   category: string;
   description: string;
+  unit?: 'cup' | 'piece' | 'bowl' | 'plate' | 'box' | 'serving';
+  imageUrl?: string;
+  isAvailable: boolean;
+  tags?: string[];
+  modifierGroups?: ModifierGroup[];
 }
 
 export interface CartItem extends MenuItem {
   quantity: number;
+  /** Unique per cart line — allows same item with different modifiers */
+  cartLineId: string;
+  selectedModifiers?: SelectedModifier[];
+  /** Sum of selected modifier prices (computed at add-time) */
+  modifierTotal: number;
 }
 
 export interface Order {
@@ -31,9 +70,15 @@ interface POSContextType {
   cart: CartItem[];
   orders: Order[];
   menuItems: MenuItem[];
-  addToCart: (item: MenuItem) => void;
-  removeFromCart: (itemId: string) => void;
-  updateQuantity: (itemId: string, quantity: number) => void;
+  customItemIds: Set<string>;
+  stockLevels: Record<string, number>;
+  availabilityOverrides: Record<string, boolean>;
+  costOverrides: Record<string, number>;
+  /** itemId → modifier groups (runtime, persisted) */
+  modifierGroupsMap: Record<string, ModifierGroup[]>;
+  addToCart: (item: MenuItem, selectedModifiers?: SelectedModifier[]) => void;
+  removeFromCart: (cartLineId: string) => void;
+  updateQuantity: (cartLineId: string, quantity: number) => void;
   clearCart: () => void;
   completeOrder: (
     paymentMethod: 'cash' | 'gcash',
@@ -42,135 +87,120 @@ interface POSContextType {
   cancelOrder: (orderId: string) => void;
   updateMenuItem: (id: string, updates: Partial<Omit<MenuItem, 'id'>>) => void;
   deleteMenuItem: (id: string) => void;
+  addCustomMenuItem: (item: Omit<MenuItem, 'id'>) => void;
+  updateStock: (id: string, qty: number) => void;
+  setAvailabilityOverride: (id: string, available: boolean) => void;
+  setCostOverride: (id: string, cost: number) => void;
+  setModifierGroups: (itemId: string, groups: ModifierGroup[]) => void;
   cartTotal: number;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
-const ORDERS_KEY = 'godswill_orders';
-const MENU_ITEMS_KEY = 'godswill_menu_items';
+const ORDERS_KEY = `${activeCafe.storageKey}_orders`;
+const CUSTOM_ITEMS_KEY = `${activeCafe.storageKey}_custom_items`;
+const STOCK_KEY = `${activeCafe.storageKey}_stock`;
+const AVAILABILITY_KEY = `${activeCafe.storageKey}_availability`;
+const COST_OVERRIDES_KEY = `${activeCafe.storageKey}_cost_overrides`;
+const MODIFIER_GROUPS_KEY = `${activeCafe.storageKey}_modifier_groups`;
 
-const defaultMenuItems: MenuItem[] = [
-  // Bestseller
-  { id: 'best-1', name: 'Biscoff Coffee', price: 180, category: 'BESTSELLER', description: 'Biscoff-infused coffee' },
-  { id: 'best-2', name: "S'mores Latte", price: 180, category: 'BESTSELLER', description: "S'mores flavored latte" },
-  { id: 'best-3', name: 'Dirty Matcha', price: 180, category: 'BESTSELLER', description: 'Matcha with espresso shot' },
-  { id: 'best-4', name: 'Golden Banana Latte', price: 220, category: 'BESTSELLER', description: 'Banana-infused latte' },
-  { id: 'best-5', name: 'White Mocha', price: 180, category: 'BESTSELLER', description: 'White chocolate mocha' },
-  { id: 'best-6', name: 'Seasalt Latte', price: 180, category: 'BESTSELLER', description: 'Sea salt topped latte' },
-  { id: 'best-7', name: 'Coffee Jelly', price: 220, category: 'BESTSELLER', description: 'Coffee with coffee jelly' },
-  // Classic Coffee
-  { id: 'cc-1', name: 'Spanish Latte', price: 150, category: 'CLASSIC COFFEE', description: 'Sweetened condensed milk latte' },
-  { id: 'cc-2', name: 'Caramel Macchiato', price: 160, category: 'CLASSIC COFFEE', description: 'Espresso with caramel' },
-  { id: 'cc-3', name: 'Salted Caramel', price: 160, category: 'CLASSIC COFFEE', description: 'Salted caramel coffee' },
-  { id: 'cc-4', name: 'Americano', price: 100, category: 'CLASSIC COFFEE', description: 'Classic americano' },
-  { id: 'cc-5', name: 'French Vanilla', price: 150, category: 'CLASSIC COFFEE', description: 'French vanilla latte' },
-  { id: 'cc-6', name: 'Thai Tea Latte', price: 150, category: 'CLASSIC COFFEE', description: 'Thai tea with milk' },
-  { id: 'cc-7', name: 'Cafe Latte', price: 130, category: 'CLASSIC COFFEE', description: 'Classic cafe latte' },
-  { id: 'cc-8', name: 'Cappuccino', price: 130, category: 'CLASSIC COFFEE', description: 'Classic cappuccino' },
-  { id: 'cc-9', name: 'Oat Milk Latte', price: 160, category: 'CLASSIC COFFEE', description: 'Latte with oat milk' },
-  // Matcha Series
-  { id: 'mat-1', name: 'Strawberry Matcha', price: 180, category: 'MATCHA SERIES', description: 'Strawberry matcha latte' },
-  { id: 'mat-2', name: 'Blueberry Matcha', price: 180, category: 'MATCHA SERIES', description: 'Blueberry matcha latte' },
-  { id: 'mat-3', name: 'Matcha Milk', price: 180, category: 'MATCHA SERIES', description: 'Classic matcha milk' },
-  { id: 'mat-4', name: 'Ube Matcha', price: 180, category: 'MATCHA SERIES', description: 'Ube matcha latte' },
-  { id: 'mat-5', name: 'Choco Matcha', price: 180, category: 'MATCHA SERIES', description: 'Chocolate matcha latte' },
-  { id: 'mat-6', name: 'Seasalt Matcha', price: 180, category: 'MATCHA SERIES', description: 'Sea salt matcha latte' },
-  // Milk Series
-  { id: 'milk-1', name: 'Strawberry Milk', price: 180, category: 'MILK SERIES', description: 'Strawberry flavored milk' },
-  { id: 'milk-2', name: 'Blueberry Milk', price: 180, category: 'MILK SERIES', description: 'Blueberry flavored milk' },
-  { id: 'milk-3', name: 'Oreo Latte', price: 180, category: 'MILK SERIES', description: 'Oreo cookies latte' },
-  { id: 'milk-4', name: 'Mango Milk', price: 180, category: 'MILK SERIES', description: 'Mango flavored milk' },
-  { id: 'milk-5', name: 'Choco Milk', price: 180, category: 'MILK SERIES', description: 'Chocolate milk' },
-  { id: 'milk-6', name: 'Ube Milk', price: 180, category: 'MILK SERIES', description: 'Ube flavored milk' },
-  { id: 'milk-7', name: 'Choco Strawberry', price: 180, category: 'MILK SERIES', description: 'Choco strawberry milk' },
-  // Frappe (Coffee Based)
-  { id: 'frp-1', name: 'Javachip Frappe', price: 200, category: 'FRAPPE', description: 'Java chip blended frappe' },
-  { id: 'frp-2', name: 'Caramel Frappe', price: 200, category: 'FRAPPE', description: 'Caramel blended frappe' },
-  { id: 'frp-3', name: 'Matcha Frappe', price: 220, category: 'FRAPPE', description: 'Matcha blended frappe' },
-  { id: 'frp-4', name: 'Biscoff Latte Frappe', price: 220, category: 'FRAPPE', description: 'Biscoff latte frappe' },
-  // Tiramisu Series
-  { id: 'tir-1', name: 'Tiramisu Latte', price: 270, category: 'TIRAMISU SERIES', description: 'Classic tiramisu latte' },
-  { id: 'tir-2', name: 'Biscoff Tiramisu', price: 270, category: 'TIRAMISU SERIES', description: 'Biscoff tiramisu latte' },
-  { id: 'tir-3', name: 'Matcha Tiramisu', price: 270, category: 'TIRAMISU SERIES', description: 'Matcha tiramisu latte' },
-  // Snacks
-  { id: 'snk-1', name: 'Shawarma', price: 59, category: 'SNACKS', description: 'Classic shawarma wrap' },
-  { id: 'snk-2', name: 'Nachos', price: 170, category: 'SNACKS', description: 'Loaded nachos' },
-  { id: 'snk-3', name: 'Shawarma Salad', price: 150, category: 'SNACKS', description: 'Fresh shawarma salad' },
-  { id: 'snk-4', name: 'Shawarma Rice', price: 130, category: 'SNACKS', description: 'Shawarma with rice' },
-  { id: 'snk-5', name: 'Hungarian Sausage Sandwich', price: 130, category: 'SNACKS', description: 'Hungarian sausage on bread' },
-  { id: 'snk-6', name: 'Drip Chicken and Fries', price: 250, category: 'SNACKS', description: 'Fried chicken with fries' },
-  { id: 'snk-7', name: 'Pasta - Spaghetti', price: 170, category: 'SNACKS', description: 'Classic spaghetti' },
-  { id: 'snk-8', name: 'Pasta - Carbonara', price: 180, category: 'SNACKS', description: 'Creamy carbonara' },
-  { id: 'snk-9', name: 'Pasta - Truffle', price: 200, category: 'SNACKS', description: 'Truffle pasta' },
-  { id: 'snk-10', name: 'Onion Rings', price: 160, category: 'SNACKS', description: 'Crispy onion rings' },
-  { id: 'snk-11', name: 'Cheesy Fries', price: 150, category: 'SNACKS', description: 'Fries with melted cheese' },
-  { id: 'snk-12', name: 'Cheese Sticks', price: 170, category: 'SNACKS', description: 'Golden cheese sticks' },
-  { id: 'snk-13', name: 'Pica-Pica Platter', price: 270, category: 'SNACKS', description: 'Fries, nachos, chicken popcorn' },
-  { id: 'snk-14', name: 'Chicken Wings (4pcs)', price: 200, category: 'SNACKS', description: '4 pieces chicken wings' },
-  { id: 'snk-15', name: 'Chicken Wings (6pcs)', price: 290, category: 'SNACKS', description: '6 pieces chicken wings' },
-  { id: 'snk-16', name: 'Chicken Wings (12pcs)', price: 550, category: 'SNACKS', description: '12 pieces chicken wings' },
-  // Bread
-  { id: 'brd-1', name: 'Clubhouse Sandwich with Fries', price: 160, category: 'BREAD', description: 'Clubhouse sandwich served with fries' },
-  { id: 'brd-2', name: 'Croffle - Blueberry', price: 140, category: 'BREAD', description: 'Blueberry croffle' },
-  { id: 'brd-3', name: 'Croffle - Mango', price: 140, category: 'BREAD', description: 'Mango croffle' },
-  { id: 'brd-4', name: 'Croffle - Biscoff Cream', price: 140, category: 'BREAD', description: 'Biscoff cream croffle' },
-  { id: 'brd-5', name: 'Croffle - Biscoff Crumble', price: 140, category: 'BREAD', description: 'Biscoff crumble croffle' },
-  { id: 'brd-6', name: 'Croffle - Cookies and Cream', price: 140, category: 'BREAD', description: 'Cookies and cream croffle' },
-  { id: 'brd-7', name: 'Croffle - Matcha', price: 140, category: 'BREAD', description: 'Matcha croffle' },
-  { id: 'brd-8', name: 'Croffle - Nutella Almond', price: 140, category: 'BREAD', description: 'Nutella almond croffle' },
-  { id: 'brd-9', name: 'Donut - Chocolate', price: 80, category: 'BREAD', description: 'Chocolate donut' },
-  { id: 'brd-10', name: 'Donut - Butternut', price: 80, category: 'BREAD', description: 'Butternut donut' },
-  { id: 'brd-11', name: 'Donut - Bavarian', price: 80, category: 'BREAD', description: 'Bavarian donut' },
-  { id: 'brd-12', name: 'Cookie - Red Velvet (Piece)', price: 99, category: 'BREAD', description: 'Red velvet cookie per piece' },
-  { id: 'brd-13', name: 'Cookie - Red Velvet (Tub)', price: 160, category: 'BREAD', description: 'Red velvet cookie per tub' },
-  { id: 'brd-14', name: 'Cookie - Choco Chip (Piece)', price: 99, category: 'BREAD', description: 'Choco chip cookie per piece' },
-  { id: 'brd-15', name: 'Cookie - Choco Chip (Tub)', price: 160, category: 'BREAD', description: 'Choco chip cookie per tub' },
-  { id: 'brd-16', name: 'Cookie - Biscoff (Piece)', price: 99, category: 'BREAD', description: 'Biscoff cookie per piece' },
-  { id: 'brd-17', name: 'Cookie - Biscoff (Tub)', price: 160, category: 'BREAD', description: 'Biscoff cookie per tub' },
-  // Rice Meals
-  { id: 'rice-1', name: 'Chicsilog', price: 160, category: 'RICE MEAL', description: 'Chicken sisig, egg, rice' },
-  { id: 'rice-2', name: 'Tapsilog', price: 180, category: 'RICE MEAL', description: 'Tapa, egg, rice' },
-  { id: 'rice-3', name: 'Spamsilog', price: 160, category: 'RICE MEAL', description: 'Spam, egg, rice' },
-  { id: 'rice-4', name: 'Sisigsilog', price: 180, category: 'RICE MEAL', description: 'Sisig, egg, rice' },
-  { id: 'rice-5', name: 'Baconsilog', price: 160, category: 'RICE MEAL', description: 'Bacon, egg, rice' },
-  { id: 'rice-6', name: 'Tocilog', price: 160, category: 'RICE MEAL', description: 'Tocino, egg, rice' },
-  { id: 'rice-7', name: 'Chicken Tonkatsu', price: 180, category: 'RICE MEAL', description: 'Breaded chicken cutlet with rice' },
-  { id: 'rice-8', name: 'Pork Tonkatsu', price: 180, category: 'RICE MEAL', description: 'Breaded pork cutlet with rice' },
-  { id: 'rice-9', name: 'Liemposilog', price: 180, category: 'RICE MEAL', description: 'Liempo, egg, rice' },
-  { id: 'rice-10', name: 'Hungariansilog', price: 180, category: 'RICE MEAL', description: 'Hungarian sausage, egg, rice' },
-];
-
-function loadMenuItems(): MenuItem[] {
+function loadCustomItems(): MenuItem[] {
   try {
-    const raw = localStorage.getItem(MENU_ITEMS_KEY);
-    return raw ? JSON.parse(raw) : defaultMenuItems;
+    const raw = localStorage.getItem(CUSTOM_ITEMS_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return defaultMenuItems;
+    return [];
   }
 }
-
-export const getDefaultMenuItems = () => defaultMenuItems;
 
 export function POSProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(loadMenuItems);
+
+  // Base items always come fresh from the active cafe config (never persisted)
+  const [baseMenuItems] = useState<MenuItem[]>(activeCafe.menuItems);
+
+  // Custom items are added at runtime and stored in localStorage
+  const [customMenuItems, setCustomMenuItems] = useState<MenuItem[]>(loadCustomItems);
+
+  // Set of custom item IDs for quick lookup (used in Inventory to show "Custom" badge)
+  const customItemIds = new Set(customMenuItems.map((i) => i.id));
+
+  // Stock levels: itemId → quantity on hand (default 50 per item)
+  const [stockLevels, setStockLevels] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem(STOCK_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Availability overrides: allows toggling base items off without editing the .ts file
+  const [availabilityOverrides, setAvailabilityOverrides] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem(AVAILABILITY_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Cost price overrides for base items (base items can't be edited in .ts at runtime)
+  const [costOverrides, setCostOverrides] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem(COST_OVERRIDES_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Modifier groups per item (runtime, persisted)
+  const [modifierGroupsMap, setModifierGroupsMap] = useState<Record<string, ModifierGroup[]>>(() => {
+    try {
+      const raw = localStorage.getItem(MODIFIER_GROUPS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Merged view: base items first, then custom items, with runtime overrides applied
+  const menuItems: MenuItem[] = [...baseMenuItems, ...customMenuItems].map((item) => ({
+    ...item,
+    isAvailable: item.id in availabilityOverrides ? availabilityOverrides[item.id] : (item.isAvailable ?? true),
+    costPrice: item.id in costOverrides ? costOverrides[item.id] : item.costPrice,
+    modifierGroups: modifierGroupsMap[item.id] ?? item.modifierGroups ?? [],
+  }));
+
+  // Persist custom items to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(customMenuItems));
+  }, [customMenuItems]);
 
   useEffect(() => {
-    localStorage.setItem(MENU_ITEMS_KEY, JSON.stringify(menuItems));
-  }, [menuItems]);
+    localStorage.setItem(STOCK_KEY, JSON.stringify(stockLevels));
+  }, [stockLevels]);
 
-  const updateMenuItem = (id: string, updates: Partial<Omit<MenuItem, 'id'>>) => {
-    setMenuItems(prev =>
-      prev.map(item =>
-        item.id === id ? { ...item, ...updates } : item
-      )
-    );
+  useEffect(() => {
+    localStorage.setItem(AVAILABILITY_KEY, JSON.stringify(availabilityOverrides));
+  }, [availabilityOverrides]);
+
+  useEffect(() => {
+    localStorage.setItem(COST_OVERRIDES_KEY, JSON.stringify(costOverrides));
+  }, [costOverrides]);
+
+  useEffect(() => {
+    localStorage.setItem(MODIFIER_GROUPS_KEY, JSON.stringify(modifierGroupsMap));
+  }, [modifierGroupsMap]);
+
+  const setModifierGroups = (itemId: string, groups: ModifierGroup[]) => {
+    setModifierGroupsMap((prev) => ({ ...prev, [itemId]: groups }));
   };
 
-  const deleteMenuItem = (id: string) => {
-    setMenuItems(prev => prev.filter(item => item.id !== id));
+  const updateStock = (id: string, qty: number) => {
+    setStockLevels((prev) => ({ ...prev, [id]: Math.max(0, qty) }));
+  };
+
+  const setAvailabilityOverride = (id: string, available: boolean) => {
+    setAvailabilityOverrides((prev) => ({ ...prev, [id]: available }));
+  };
+
+  const setCostOverride = (id: string, cost: number) => {
+    setCostOverrides((prev) => ({ ...prev, [id]: cost }));
   };
 
   // Load orders from localStorage on mount
@@ -182,36 +212,76 @@ export function POSProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Save orders to localStorage
+  // Persist orders to localStorage
   useEffect(() => {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
   }, [orders]);
 
-  const addToCart = (item: MenuItem) => {
-    setCart(prev => {
-      const existing = prev.find(i => i.id === item.id);
-      if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+  const addCustomMenuItem = (item: Omit<MenuItem, 'id'>) => {
+    const newItem: MenuItem = {
+      ...item,
+      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    };
+    setCustomMenuItems((prev) => [...prev, newItem]);
+  };
+
+  const updateMenuItem = (id: string, updates: Partial<Omit<MenuItem, 'id'>>) => {
+    if (customItemIds.has(id)) {
+      setCustomMenuItems((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      );
+    }
+    // Base item edits are in-memory only (resets on refresh — acceptable for mockup)
+  };
+
+  const deleteMenuItem = (id: string) => {
+    if (customItemIds.has(id)) {
+      setCustomMenuItems((prev) => prev.filter((item) => item.id !== id));
+    }
+    // Base items cannot be permanently deleted in mockup mode
+  };
+
+  const addToCart = (item: MenuItem, selectedModifiers?: SelectedModifier[]) => {
+    const modifierTotal = (selectedModifiers ?? []).reduce((s, m) => s + m.price, 0);
+    setCart((prev) => {
+      // Items without modifiers: merge into existing line if same item.id
+      if (!selectedModifiers || selectedModifiers.length === 0) {
+        const existing = prev.find((i) => i.id === item.id && (!i.selectedModifiers || i.selectedModifiers.length === 0));
+        if (existing) {
+          return prev.map((i) => (i.cartLineId === existing.cartLineId ? { ...i, quantity: i.quantity + 1 } : i));
+        }
+        return [...prev, { ...item, quantity: 1, cartLineId: item.id, selectedModifiers: [], modifierTotal: 0 }];
       }
-      return [...prev, { ...item, quantity: 1 }];
+      // Items with modifiers: try to find line with identical modifier selection
+      const sigNew = selectedModifiers.map((m) => `${m.groupId}:${m.optionId}`).sort().join('|');
+      const existing = prev.find((i) => {
+        if (i.id !== item.id || !i.selectedModifiers?.length) return false;
+        const sigEx = i.selectedModifiers.map((m) => `${m.groupId}:${m.optionId}`).sort().join('|');
+        return sigEx === sigNew;
+      });
+      if (existing) {
+        return prev.map((i) => (i.cartLineId === existing.cartLineId ? { ...i, quantity: i.quantity + 1 } : i));
+      }
+      const cartLineId = `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+      return [...prev, { ...item, quantity: 1, cartLineId, selectedModifiers, modifierTotal }];
     });
   };
 
-  const removeFromCart = (itemId: string) => {
-    setCart(prev => prev.filter(i => i.id !== itemId));
+  const removeFromCart = (cartLineId: string) => {
+    setCart((prev) => prev.filter((i) => i.cartLineId !== cartLineId));
   };
 
-  const updateQuantity = (itemId: string, quantity: number) => {
+  const updateQuantity = (cartLineId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(itemId);
+      removeFromCart(cartLineId);
       return;
     }
-    setCart(prev => prev.map(i => i.id === itemId ? { ...i, quantity } : i));
+    setCart((prev) => prev.map((i) => (i.cartLineId === cartLineId ? { ...i, quantity } : i)));
   };
 
   const clearCart = () => setCart([]);
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + (item.price + item.modifierTotal) * item.quantity, 0);
 
   const completeOrder = (
     paymentMethod: 'cash' | 'gcash',
@@ -243,24 +313,38 @@ export function POSProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelOrder = (orderId: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'cancelled' as const } : o));
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: 'cancelled' as const } : o))
+    );
   };
 
   return (
-    <POSContext.Provider value={{
-      cart,
-      orders,
-      menuItems,
-      addToCart,
-      removeFromCart,
-      updateQuantity,
-      clearCart,
-      completeOrder,
-      cancelOrder,
-      updateMenuItem,
-      deleteMenuItem,
-      cartTotal,
-    }}>
+    <POSContext.Provider
+      value={{
+        cart,
+        orders,
+        menuItems,
+        customItemIds,
+        stockLevels,
+        availabilityOverrides,
+        costOverrides,
+        modifierGroupsMap,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        completeOrder,
+        cancelOrder,
+        updateMenuItem,
+        deleteMenuItem,
+        addCustomMenuItem,
+        updateStock,
+        setAvailabilityOverride,
+        setCostOverride,
+        setModifierGroups,
+        cartTotal,
+      }}
+    >
       {children}
     </POSContext.Provider>
   );

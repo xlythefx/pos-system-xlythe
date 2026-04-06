@@ -1,7 +1,7 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { format } from "date-fns";
 import type { Order } from "@/contexts/POSContext";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Printer, ChevronDown } from "lucide-react";
+
+const VISIBLE_ITEMS = 5;
 
 interface ReceiptDialogProps {
   order: Order | null;
@@ -21,6 +24,12 @@ interface ReceiptDialogProps {
 
 const ReceiptDialog = ({ order, open, onOpenChange }: ReceiptDialogProps) => {
   const printRef = useRef<HTMLDivElement>(null);
+  const [showAllItems, setShowAllItems] = useState(false);
+
+  const itemCount = order?.items.length ?? 0;
+  const hasHiddenItems = itemCount > VISIBLE_ITEMS;
+  const visibleSlice = order?.items.slice(0, VISIBLE_ITEMS) ?? [];
+  const extraItems = order?.items.slice(VISIBLE_ITEMS) ?? [];
 
   const handlePrint = () => {
     if (!order || !printRef.current) return;
@@ -78,14 +87,20 @@ const ReceiptDialog = ({ order, open, onOpenChange }: ReceiptDialogProps) => {
             <div class="bold" style="margin-bottom: 6px;">ITEMS</div>
             ${order.items
               .map(
-                (item) => `
+                (item) => {
+                  const unitPrice = item.price + (item.modifierTotal ?? 0);
+                  const modsLine = item.selectedModifiers && item.selectedModifiers.length > 0
+                    ? `<div class="item-desc">${item.selectedModifiers.map((m) => m.optionName).join(', ')}</div>` : '';
+                  return `
               <div class="item-name">${item.quantity}x ${item.name}</div>
+              ${modsLine}
               ${item.description ? `<div class="item-desc">${item.description}</div>` : ""}
               <div class="item-line">
-                <span>@ ₱${formatCurrency(item.price)}</span>
-                <span>₱${formatCurrency(item.price * item.quantity)}</span>
+                <span>@ ₱${formatCurrency(unitPrice)}</span>
+                <span>₱${formatCurrency(unitPrice * item.quantity)}</span>
               </div>
-            `
+            `;
+                }
               )
               .join("")}
 
@@ -119,7 +134,7 @@ const ReceiptDialog = ({ order, open, onOpenChange }: ReceiptDialogProps) => {
   if (!order) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) setShowAllItems(false); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-sm" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="font-display tracking-wider">
@@ -163,19 +178,72 @@ const ReceiptDialog = ({ order, open, onOpenChange }: ReceiptDialogProps) => {
             )}
           </div>
           <div className="border-t border-border py-3 space-y-2">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between">
-                <div>
-                  <span className="font-medium">{item.quantity}x {item.name}</span>
-                  {item.description && (
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                  )}
+            {visibleSlice.map((item) => {
+              const unitPrice = item.price + (item.modifierTotal ?? 0);
+              return (
+                <div key={item.cartLineId ?? item.id} className="flex justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="font-medium">{item.quantity}x {item.name}</span>
+                    {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        {item.selectedModifiers.map((m) => m.optionName).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-primary font-display shrink-0">
+                    ₱{formatCurrency(unitPrice * item.quantity)}
+                  </span>
                 </div>
-                <span className="text-primary font-display">
-                  ₱{formatCurrency(item.price * item.quantity)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
+            {hasHiddenItems && (
+              <Collapsible open={showAllItems} onOpenChange={setShowAllItems}>
+                <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                  <div className="space-y-2 pt-1 border-t border-border/60 mt-2">
+                    {extraItems.map((item, i) => {
+                      const unitPrice = item.price + (item.modifierTotal ?? 0);
+                      return (
+                        <div
+                          key={item.cartLineId ?? item.id}
+                          style={{ animationDelay: `${i * 40}ms` }}
+                          className="flex justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-300 [animation-fill-mode:both]"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-medium">{item.quantity}x {item.name}</span>
+                            {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                              <p className="text-[10px] text-muted-foreground leading-snug">
+                                {item.selectedModifiers.map((m) => m.optionName).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-primary font-display shrink-0">
+                            ₱{formatCurrency(unitPrice * item.quantity)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleContent>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-1.5 py-2 mt-1 text-xs text-primary font-display font-medium rounded-md hover:bg-primary/10 transition-colors duration-200"
+                  >
+                    <span>
+                      {showAllItems
+                        ? 'Show less'
+                        : `Show ${itemCount - VISIBLE_ITEMS} more item${itemCount - VISIBLE_ITEMS > 1 ? 's' : ''}`}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-transform duration-300 ease-out",
+                        showAllItems && "rotate-180"
+                      )}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+              </Collapsible>
+            )}
           </div>
           <div className="border-t-2 border-border pt-3 space-y-2">
             <div className="flex justify-between font-bold text-base">
