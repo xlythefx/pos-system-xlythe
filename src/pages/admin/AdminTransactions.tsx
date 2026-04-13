@@ -63,7 +63,7 @@ function orderUnitCount(order: Order): number {
 const AdminTransactions = () => {
   const { orders } = usePOS();
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(true);
 
   const demoTransactions = useMemo(() => createDemoTransactions(), []);
 

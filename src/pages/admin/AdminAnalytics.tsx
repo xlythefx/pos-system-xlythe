@@ -4,7 +4,7 @@ import { usePOS } from '@/contexts/POSContext';
 import { format, subDays, subMonths, startOfDay, endOfDay, isWithinInterval, differenceInDays } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Download, Users, TrendingUp, ShoppingBag, DollarSign, Clock, FlaskConical, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { Download, Users, TrendingUp, ShoppingBag, DollarSign, Clock, FlaskConical, ArrowUp, ArrowDown, Minus, CreditCard, Banknote, XCircle, ListOrdered } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -75,7 +75,7 @@ const createDemoOrders = (rangeStart: Date, rangeEnd: Date): Order[] => {
 const AdminAnalytics = () => {
   const { orders } = usePOS();
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(true);
   const completedOrders = orders.filter(o => o.status === 'completed');
 
   const rangeStart = useMemo(() => {
@@ -158,6 +158,28 @@ const AdminAnalytics = () => {
   const prevTotalOrders = prevFilteredOrders.length;
   const prevAvgOrderValue = prevTotalOrders > 0 ? prevTotalRevenue / prevTotalOrders : 0;
   const prevItemsSold = prevFilteredOrders.reduce((s, o) => s + o.items.reduce((is, i) => is + i.quantity, 0), 0);
+
+  // Cancellation rate — demo: synthetic 8%; live: real all-status orders in range
+  const { cancelledCount, totalAllOrders } = isDemoMode
+    ? (() => { const c = Math.round(totalOrders * 0.08); return { cancelledCount: c, totalAllOrders: totalOrders + c }; })()
+    : (() => {
+        const all = orders.filter(o => isWithinInterval(new Date(o.timestamp), { start: rangeStart, end: rangeEnd }));
+        return { cancelledCount: all.filter(o => o.status === 'cancelled').length, totalAllOrders: all.length };
+      })();
+  const cancellationRate = totalAllOrders > 0 ? (cancelledCount / totalAllOrders) * 100 : 0;
+
+  // Avg items per order
+  const avgItemsPerOrder = totalOrders > 0 ? totalItemsSold / totalOrders : 0;
+  const prevAvgItemsPerOrder = prevTotalOrders > 0
+    ? prevFilteredOrders.reduce((s, o) => s + o.items.reduce((is, i) => is + i.quantity, 0), 0) / prevTotalOrders : 0;
+
+  // Payment method split
+  const cashOrders = filteredOrders.filter(o => o.paymentMethod === 'cash');
+  const gcashOrders = filteredOrders.filter(o => o.paymentMethod === 'gcash');
+  const paymentSplitData = [
+    { name: 'Cash',  value: cashOrders.length,  revenue: cashOrders.reduce((s, o) => s + o.total, 0) },
+    { name: 'GCash', value: gcashOrders.length, revenue: gcashOrders.reduce((s, o) => s + o.total, 0) },
+  ];
 
   // Top selling items
   const itemMap: Record<string, { name: string; category: string; qty: number; revenue: number }> = {};
@@ -362,6 +384,45 @@ const AdminAnalytics = () => {
           </div>
         </div>
 
+        {/* Secondary Metrics Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="brutal-card bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ListOrdered className="h-4 w-4 text-primary" />
+              <p className="text-xs text-muted-foreground font-display tracking-wider">AVG ITEMS / ORDER</p>
+            </div>
+            <p className="text-xl font-display font-bold text-foreground mb-1">{avgItemsPerOrder.toFixed(1)}</p>
+            <DeltaBadge current={avgItemsPerOrder} prev={prevAvgItemsPerOrder} />
+          </div>
+          <div className="brutal-card bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <XCircle className="h-4 w-4 text-destructive" />
+              <p className="text-xs text-muted-foreground font-display tracking-wider">CANCELLATION RATE</p>
+            </div>
+            <p className="text-xl font-display font-bold text-foreground mb-1">{cancellationRate.toFixed(1)}%</p>
+            <p className="text-[10px] text-muted-foreground font-display">{cancelledCount} cancelled of {totalAllOrders}</p>
+          </div>
+          <div className="brutal-card bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <CreditCard className="h-4 w-4 text-primary" />
+              <p className="text-xs text-muted-foreground font-display tracking-wider">PAYMENT SPLIT</p>
+            </div>
+            <div className="flex items-center gap-3 mt-1">
+              <div className="flex items-center gap-1">
+                <Banknote className="h-3 w-3 text-green-500" />
+                <span className="text-sm font-display font-bold">{cashOrders.length}</span>
+                <span className="text-[10px] text-muted-foreground">CASH</span>
+              </div>
+              <span className="text-muted-foreground text-xs">/</span>
+              <div className="flex items-center gap-1">
+                <CreditCard className="h-3 w-3 text-blue-500" />
+                <span className="text-sm font-display font-bold">{gcashOrders.length}</span>
+                <span className="text-[10px] text-muted-foreground">GCASH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Charts Row */}
         <div className="grid md:grid-cols-2 gap-6">
           {/* Sales Over Time */}
@@ -401,6 +462,59 @@ const AdminAnalytics = () => {
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground font-display text-sm">No data yet</div>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Method Split + Hourly Order Volume */}
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="brutal-card bg-card p-4">
+            <p className="text-xs text-muted-foreground font-display tracking-wider mb-4">PAYMENT METHOD SPLIT</p>
+            <div className="h-64">
+              {totalOrders > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentSplitData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%" cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      <Cell fill="#22c55e" />
+                      <Cell fill="#3b82f6" />
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '2px solid hsl(var(--border))', borderRadius: 0 }}
+                      formatter={(value: number, name: string, props: { payload: { revenue: number } }) =>
+                        [`${value} orders · ₱${formatCurrency(props.payload.revenue)}`, name]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground font-display text-sm">No data yet</div>
+              )}
+            </div>
+          </div>
+
+          <div className="brutal-card bg-card p-4">
+            <p className="text-xs text-muted-foreground font-display tracking-wider mb-4">HOURLY ORDER VOLUME</p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={hourlyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '2px solid hsl(var(--border))', borderRadius: 0 }}
+                    formatter={(v: number) => [v, 'Orders']}
+                  />
+                  <Bar dataKey="orders" fill="hsl(var(--primary) / 0.75)" />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>

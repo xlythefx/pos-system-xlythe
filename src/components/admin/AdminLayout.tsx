@@ -23,12 +23,12 @@ interface AdminLayoutProps {
 }
 
 const navItems = [
+  { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
   { label: 'POS', path: '/admin', icon: ShoppingCart },
   { label: 'Inventory', path: '/admin/inventory', icon: Package },
   { label: 'Audit', path: '/admin/audit', icon: ShieldAlert },
   { label: 'Orders', path: '/admin/orders', icon: ClipboardList },
   { label: 'Transactions', path: '/admin/transactions', icon: FileText },
-  { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
   { label: 'Profitability', path: '/admin/profitability', icon: Calculator },
 ];
 

@@ -99,7 +99,7 @@ const AdminAudit = () => {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [showOnly, setShowOnly] = useState<'all' | 'warning' | 'critical'>("all");
   const [reconPage, setReconPage] = useState(1);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(true);
 
   const demoAuditRows = useMemo(() => createDemoAuditRows(), []);
 

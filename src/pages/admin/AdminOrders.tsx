@@ -57,7 +57,7 @@ const AdminOrders = () => {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(true);
 
   const demoOrders = useMemo(() => createDemoOrders(), []);
   const displayOrders = isDemoMode ? demoOrders : orders;

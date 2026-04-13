@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import {
   TrendingUp, Coffee, Zap, Droplets, Wifi, Users, Wrench, FileText,
-  Package, ShoppingBag, AlertTriangle, CheckCircle2, Info, ChevronDown, ChevronUp,
-  Calculator, Target, BarChart2
+  Package, ShoppingBag, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp,
+  Calculator, Target, BarChart2, FlaskConical, HelpCircle
 } from 'lucide-react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { usePOS } from '@/contexts/POSContext';
@@ -14,6 +14,8 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { activeCafe } from '@/lib/cafe-config';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,20 +56,29 @@ function save(key: string, val: unknown) {
 const defaultOverhead = (): OverheadItem[] => [
   { id: 'rent',        label: 'Rent / Lease',            icon: <Coffee className="h-4 w-4" />,   value: 0, placeholder: '18000', hint: 'Monthly space rental' },
   { id: 'electric',    label: 'Electricity',             icon: <Zap className="h-4 w-4" />,      value: 0, placeholder: '8000',  hint: 'Espresso machines & AC are heavy consumers' },
-  { id: 'water',       label: 'Water',                   icon: <Droplets className="h-4 w-4" />, value: 0, placeholder: '1500' },
+  { id: 'water',       label: 'Water',                   icon: <Droplets className="h-4 w-4" />, value: 0, placeholder: '1500',  hint: 'Water used for drinks, cleaning, and restrooms' },
   { id: 'internet',    label: 'Internet + Streaming',    icon: <Wifi className="h-4 w-4" />,     value: 0, placeholder: '2500',  hint: 'Cafe WiFi + background music/TV subscriptions' },
   { id: 'salaries',    label: 'Salaries (all staff)',    icon: <Users className="h-4 w-4" />,    value: 0, placeholder: '35000', hint: 'Include baristas, cashier, kitchen staff' },
   { id: 'equipment',   label: 'Equipment Amortization',  icon: <Wrench className="h-4 w-4" />,   value: 0, placeholder: '3000',  hint: 'Purchase price ÷ useful months (e.g. ₱180k machine ÷ 60 months = ₱3k/mo)' },
   { id: 'packaging',   label: 'Packaging',               icon: <Package className="h-4 w-4" />,  value: 0, placeholder: '4000',  hint: 'Cups, lids, straws, bags, tissue per month' },
   { id: 'permits',     label: 'Permits & Licenses',      icon: <FileText className="h-4 w-4" />, value: 0, placeholder: '500',   hint: 'Monthly equivalent of annual business permits' },
-  { id: 'cleaning',    label: 'Cleaning & Supplies',     icon: <ShoppingBag className="h-4 w-4" />, value: 0, placeholder: '1500' },
-  { id: 'other',       label: 'Other Overhead',          icon: <Calculator className="h-4 w-4" />, value: 0, placeholder: '2000' },
+  { id: 'cleaning',    label: 'Cleaning & Supplies',     icon: <ShoppingBag className="h-4 w-4" />, value: 0, placeholder: '1500', hint: 'Cleaning products, mops, sanitizers, and janitorial supplies' },
+  { id: 'other',       label: 'Other Overhead',          icon: <Calculator className="h-4 w-4" />, value: 0, placeholder: '2000', hint: 'Any other recurring monthly expense not listed above' },
 ];
+
+// ─── Demo values ──────────────────────────────────────────────────────────────
+
+const DEMO_OVERHEAD: Record<string, number> = {
+  rent: 18000, electric: 8500, water: 1500, internet: 2500,
+  salaries: 38000, equipment: 3000, packaging: 4500,
+  permits: 500, cleaning: 1500, other: 2000,
+}; // Total = ₱82,500
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const AdminProfitability = () => {
   const { menuItems, orders } = usePOS();
+  const [isDemoMode, setIsDemoMode] = useState(true);
 
   const saved = useMemo(() => loadSaved<Record<string, unknown>>(STORAGE_KEY, {}), []);
 
@@ -122,9 +133,13 @@ const AdminProfitability = () => {
 
   // ─── Core Calculations ────────────────────────────────────────────────────
 
+  const displayOverhead = useMemo(() =>
+    isDemoMode ? overhead.map(o => ({ ...o, value: DEMO_OVERHEAD[o.id] ?? o.value })) : overhead,
+    [isDemoMode, overhead]);
+
   const totalMonthlyOverhead = useMemo(
-    () => overhead.reduce((s, o) => s + (o.value || 0), 0),
-    [overhead]);
+    () => displayOverhead.reduce((s, o) => s + (o.value || 0), 0),
+    [displayOverhead]);
 
   // Weighted average contribution margin from category mix
   const weightedAvgPrice = useMemo(() => {
@@ -229,14 +244,23 @@ const AdminProfitability = () => {
     <AdminLayout>
       <div className="flex-1 min-h-0 overflow-y-auto space-y-8 pb-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-display font-bold tracking-tight flex items-center gap-3">
-            <Calculator className="h-8 w-8 text-primary" />
-            Profitability Calculator
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Enter your real cafe costs to find out exactly how many cups/orders you need to break even and hit your profit target.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-display font-bold tracking-tight flex items-center gap-3">
+              <Calculator className="h-8 w-8 text-primary" />
+              Profitability Calculator
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Enter your real cafe costs to find out exactly how many cups/orders you need to break even and hit your profit target.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded border border-border bg-secondary self-start shrink-0">
+            <Label htmlFor="profit-demo-mode" className="text-xs font-display tracking-wider cursor-pointer whitespace-nowrap">
+              {isDemoMode ? 'DEMO' : 'LIVE'}
+            </Label>
+            <Switch id="profit-demo-mode" checked={isDemoMode} onCheckedChange={setIsDemoMode} />
+            <FlaskConical className={cn("h-4 w-4", isDemoMode ? "text-primary" : "text-muted-foreground")} />
+          </div>
         </div>
 
         {/* ── Section 1: Monthly Overhead ── */}
@@ -252,7 +276,7 @@ const AdminProfitability = () => {
           </CardHeader>
           <CardContent>
             <div className="grid sm:grid-cols-2 gap-4">
-              {overhead.map((item) => (
+              {displayOverhead.map((item) => (
                 <div key={item.id} className="flex items-center gap-3">
                   <div className="text-muted-foreground shrink-0">{item.icon}</div>
                   <div className="flex-1 min-w-0">
@@ -261,7 +285,7 @@ const AdminProfitability = () => {
                       {item.hint && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-48 text-xs">{item.hint}</TooltipContent>
                         </Tooltip>
@@ -274,8 +298,9 @@ const AdminProfitability = () => {
                         min="0"
                         placeholder={item.placeholder}
                         value={item.value || ''}
-                        onChange={(e) => updateOverhead(item.id, parseFloat(e.target.value) || 0)}
-                        className="pl-7"
+                        onChange={(e) => !isDemoMode && updateOverhead(item.id, parseFloat(e.target.value) || 0)}
+                        readOnly={isDemoMode}
+                        className={cn("pl-7", isDemoMode && "opacity-60 cursor-not-allowed bg-muted")}
                       />
                     </div>
                   </div>
