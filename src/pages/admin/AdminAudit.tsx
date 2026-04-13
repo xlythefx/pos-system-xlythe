@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { ShieldAlert, Search, TrendingDown, Package, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShieldAlert, Search, TrendingDown, Package, AlertTriangle, ChevronLeft, ChevronRight, HelpCircle, FlaskConical } from "lucide-react";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { usePOS } from "@/contexts/POSContext";
 import { POS_MENU_CATEGORIES } from "@/lib/pos-categories";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Card,
   CardContent,
@@ -47,12 +55,53 @@ interface AuditRow {
 
 const ALL_CATS = ['ALL', ...POS_MENU_CATEGORIES] as const;
 
+const DEMO_MENU = [
+  { id: 'da-1', name: 'Biscoff Coffee', category: 'BESTSELLER' },
+  { id: 'da-2', name: "S'mores Latte", category: 'BESTSELLER' },
+  { id: 'da-3', name: 'Spanish Latte', category: 'CLASSIC COFFEE' },
+  { id: 'da-4', name: 'Americano', category: 'CLASSIC COFFEE' },
+  { id: 'da-5', name: 'Matcha Milk', category: 'MATCHA SERIES' },
+  { id: 'da-6', name: 'Matcha Latte', category: 'MATCHA SERIES' },
+  { id: 'da-7', name: 'Shawarma', category: 'SNACKS' },
+  { id: 'da-8', name: 'Fries', category: 'SNACKS' },
+  { id: 'da-9', name: 'Croffle', category: 'BREAD' },
+  { id: 'da-10', name: 'Pandesal', category: 'BREAD' },
+  { id: 'da-11', name: 'Tapsilog', category: 'RICE MEAL' },
+  { id: 'da-12', name: 'Longsilog', category: 'RICE MEAL' },
+];
+
+// Seeded pseudo-random so values stay stable on re-render
+const seededRand = (seed: number) => {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return Math.abs(s) / 0x7fffffff; };
+};
+
+const createDemoAuditRows = (): AuditRow[] => {
+  return DEMO_MENU.map((item, idx) => {
+    const rand = seededRand(idx * 7919 + 31337);
+    const originalStock = 50;
+    const unitsSold = Math.floor(rand() * 20) + 5;
+    // Introduce variance: some items have -8 to +3 discrepancy
+    const variance = Math.floor(rand() * 11) - 8;
+    const stockOnHand = Math.max(0, originalStock - unitsSold + variance);
+    const expectedRemaining = originalStock - unitsSold;
+    const discrepancy = stockOnHand - expectedRemaining;
+    let level: DiscrepancyLevel = 'ok';
+    if (discrepancy < -5) level = 'critical';
+    else if (discrepancy < 0) level = 'warning';
+    return { id: item.id, name: item.name, category: item.category, stockOnHand, unitsSold, expectedRemaining, discrepancy, level };
+  });
+};
+
 const AdminAudit = () => {
   const { menuItems, orders, stockLevels } = usePOS();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [showOnly, setShowOnly] = useState<'all' | 'warning' | 'critical'>("all");
   const [reconPage, setReconPage] = useState(1);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  const demoAuditRows = useMemo(() => createDemoAuditRows(), []);
 
   useEffect(() => {
     setReconPage(1);
@@ -95,15 +144,16 @@ const AdminAudit = () => {
 
   // For meaningful audit: items with sales activity OR discrepancies
   const filteredRows = useMemo(() => {
+    const source = isDemoMode ? demoAuditRows : auditRows;
     const q = search.toLowerCase();
-    return auditRows.filter((row) => {
+    return source.filter((row) => {
       if (categoryFilter !== 'ALL' && row.category !== categoryFilter) return false;
       if (q && !row.name.toLowerCase().includes(q) && !row.category.toLowerCase().includes(q)) return false;
       if (showOnly === 'warning') return row.level === 'warning' || row.level === 'critical';
       if (showOnly === 'critical') return row.level === 'critical';
       return true;
     });
-  }, [auditRows, search, categoryFilter, showOnly]);
+  }, [isDemoMode, demoAuditRows, auditRows, search, categoryFilter, showOnly]);
 
   const reconTotalPages = Math.max(1, Math.ceil(filteredRows.length / RECON_PAGE_SIZE));
   const reconPageSafe = Math.min(reconPage, reconTotalPages);
@@ -116,22 +166,39 @@ const AdminAudit = () => {
     if (reconPage > reconTotalPages) setReconPage(reconTotalPages);
   }, [reconPage, reconTotalPages]);
 
-  const criticalCount = auditRows.filter((r) => r.level === 'critical').length;
-  const warningCount = auditRows.filter((r) => r.level === 'warning').length;
-  const totalSold = Object.values(soldMap).reduce((a, b) => a + b, 0);
+  const activeRows = isDemoMode ? demoAuditRows : auditRows;
+  const criticalCount = activeRows.filter((r) => r.level === 'critical').length;
+  const warningCount = activeRows.filter((r) => r.level === 'warning').length;
+  const totalSold = isDemoMode
+    ? demoAuditRows.reduce((a, r) => a + r.unitsSold, 0)
+    : Object.values(soldMap).reduce((a, b) => a + b, 0);
   const totalRevenue = useMemo(() => orders.filter(o => o.status === 'completed').reduce((s, o) => s + o.total, 0), [orders]);
 
   return (
     <AdminLayout>
       <div className="flex-1 min-h-0 overflow-y-auto space-y-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        <div>
-          <h1 className="text-3xl font-display font-bold tracking-tight flex items-center gap-3">
-            <ShieldAlert className="h-8 w-8 text-primary" />
-            Stock Audit
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Compare units sold vs. current stock on hand. Discrepancies may indicate theft, spoilage, or unrecorded usage.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-display font-bold tracking-tight flex items-center gap-3">
+              <ShieldAlert className="h-8 w-8 text-primary" />
+              Stock Audit
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Compare units sold vs. current stock on hand. Discrepancies may indicate theft, spoilage, or unrecorded usage.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded border border-border bg-secondary shrink-0">
+            <Label htmlFor="audit-demo-mode" className="text-xs font-display tracking-wider cursor-pointer whitespace-nowrap">
+              {isDemoMode ? 'DEMO' : 'LIVE'}
+            </Label>
+            <Switch
+              id="audit-demo-mode"
+              checked={isDemoMode}
+              onCheckedChange={setIsDemoMode}
+              aria-label={isDemoMode ? 'Demo mode on' : 'Live mode on'}
+            />
+            <FlaskConical className={`h-4 w-4 ${isDemoMode ? 'text-primary' : 'text-muted-foreground'}`} />
+          </div>
         </div>
 
         {/* Summary Cards */}
@@ -139,7 +206,7 @@ const AdminAudit = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Items Tracked</CardDescription>
-              <CardTitle className="text-2xl">{menuItems.length}</CardTitle>
+              <CardTitle className="text-2xl">{activeRows.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
@@ -236,16 +303,65 @@ const AdminAudit = () => {
               </Select>
             </div>
 
+            <TooltipProvider delayDuration={200}>
             <div className="rounded-md border overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Units Sold</TableHead>
-                    <TableHead className="text-right">Stock on Hand</TableHead>
-                    <TableHead className="text-right">Expected</TableHead>
-                    <TableHead className="text-right">Discrepancy</TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Units Sold
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[200px] text-xs">
+                            Total units sold through completed POS orders.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Stock on Hand
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px] text-xs">
+                            Current inventory count set manually in the Inventory page.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Expected
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px] text-xs">
+                            What should remain if only POS sales reduced stock (opening stock − units sold).
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Discrepancy
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[260px] text-xs">
+                            Actual stock minus expected stock. Negative values mean stock is lower than sales records suggest — possible theft, spoilage, or unrecorded usage.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
                     <TableHead className="text-center">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -302,6 +418,7 @@ const AdminAudit = () => {
               </Table>
             </div>
 
+            </TooltipProvider>
             {filteredRows.length > RECON_PAGE_SIZE && (
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <p className="text-sm text-muted-foreground font-display">

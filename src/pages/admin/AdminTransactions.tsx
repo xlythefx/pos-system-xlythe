@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { usePOS, type Order } from '@/contexts/POSContext';
-import { format } from 'date-fns';
-import { Banknote, Smartphone, Eye } from 'lucide-react';
+import { format, subDays } from 'date-fns';
+import { Banknote, Smartphone, Eye, FlaskConical } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,46 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
+const DEMO_TX_ITEMS = [
+  { id: 'demo-1', name: 'Biscoff Coffee', price: 180, category: 'BESTSELLER', description: '' },
+  { id: 'demo-2', name: "S'mores Latte", price: 180, category: 'BESTSELLER', description: '' },
+  { id: 'demo-3', name: 'Spanish Latte', price: 150, category: 'CLASSIC COFFEE', description: '' },
+  { id: 'demo-4', name: 'Matcha Milk', price: 180, category: 'MATCHA SERIES', description: '' },
+  { id: 'demo-5', name: 'Shawarma', price: 59, category: 'SNACKS', description: '' },
+  { id: 'demo-6', name: 'Croffle', price: 140, category: 'BREAD', description: '' },
+  { id: 'demo-7', name: 'Tapsilog', price: 180, category: 'RICE MEAL', description: '' },
+];
+
+const createDemoTransactions = (): Order[] => {
+  const result: Order[] = [];
+  for (let d = 0; d < 30; d++) {
+    const date = subDays(new Date(), 29 - d);
+    const perDay = 3 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < perDay; i++) {
+      const h = 8 + Math.floor(Math.random() * 12);
+      const m = Math.floor(Math.random() * 60);
+      const ts = new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m);
+      const numItems = 1 + Math.floor(Math.random() * 3);
+      const orderItems = Array.from({ length: numItems }, () => {
+        const item = DEMO_TX_ITEMS[Math.floor(Math.random() * DEMO_TX_ITEMS.length)];
+        return { ...item, quantity: 1 + Math.floor(Math.random() * 2), cartLineId: item.id, modifierTotal: 0, sku: '', isAvailable: true };
+      });
+      const total = orderItems.reduce((s, it) => s + it.price * it.quantity, 0);
+      const useGcash = Math.random() > 0.4;
+      result.push({
+        id: `DEMO-${String(d).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
+        items: orderItems,
+        total,
+        timestamp: ts,
+        status: Math.random() > 0.08 ? 'completed' : 'cancelled',
+        paymentMethod: useGcash ? 'gcash' : 'cash',
+        ...(useGcash ? { gcashReference: `GCR-${Math.floor(Math.random() * 900000) + 100000}` } : {}),
+      });
+    }
+  }
+  return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
 /** Total units sold (sum of line quantities) */
 function orderUnitCount(order: Order): number {
   return order.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -21,15 +63,32 @@ function orderUnitCount(order: Order): number {
 const AdminTransactions = () => {
   const { orders } = usePOS();
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
-  const allTransactions = [...orders].sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
+  const demoTransactions = useMemo(() => createDemoTransactions(), []);
+
+  const allTransactions = isDemoMode
+    ? demoTransactions
+    : [...orders].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
     <AdminLayout>
       <div className="flex-1 min-h-0 overflow-y-auto space-y-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        <h2 className="font-display font-bold text-foreground tracking-wider text-xl">TRANSACTION LOGS</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h2 className="font-display font-bold text-foreground tracking-wider text-xl">TRANSACTION LOGS</h2>
+          <div className="flex items-center gap-2 px-3 py-2 rounded border border-border bg-secondary">
+            <Label htmlFor="tx-demo-mode" className="text-xs font-display tracking-wider cursor-pointer whitespace-nowrap">
+              {isDemoMode ? 'DEMO' : 'LIVE'}
+            </Label>
+            <Switch
+              id="tx-demo-mode"
+              checked={isDemoMode}
+              onCheckedChange={setIsDemoMode}
+              aria-label={isDemoMode ? 'Demo mode on' : 'Live mode on'}
+            />
+            <FlaskConical className={cn("h-4 w-4", isDemoMode ? "text-primary" : "text-muted-foreground")} />
+          </div>
+        </div>
 
         <div className="brutal-card bg-card overflow-hidden">
           <div className="overflow-x-auto">
